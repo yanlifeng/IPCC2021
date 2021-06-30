@@ -1,0 +1,4 @@
+/Applications/CLion.app/Contents/bin/cmake/mac/bin/cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=/usr/local/Cellar/gcc@8/8.4.0_1/bin/gcc-8 -DCMAKE_CXX_COMPILER=/usr/local/Cellar/gcc@8/8.4.0_1/bin/g++-8 -G "CodeBlocks - Unix Makefiles" /Users/ylf9811/Desktop/IPCC2021/pr
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /Users/ylf9811/Desktop/IPCC2021/pr/cmake-build-release
