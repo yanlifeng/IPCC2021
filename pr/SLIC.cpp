@@ -353,6 +353,11 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
     double invxywt = 1.0 / (STEP * STEP);//NOTE: this is different from how usual SLIC/LKM works
 
     double minCost = 0;
+    double minCost2 = 0;
+    double minCost3 = 0;
+    double minCost4 = 0;
+    double minCost5 = 0;
+    double minCost6 = 0;
 
     while (numitr < NUMITR) {
         //------
@@ -362,70 +367,74 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
         auto startTime = Clock::now();
         distvec.assign(sz, DBL_MAX);
 
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(64)
-#endif
-        for (int i = 0; i < sz; i++) {
-            double l = m_lvec[i];
-            double a = m_avec[i];
-            double b = m_bvec[i];
-            int x = i % m_width;
-            int y = i / m_width;
-            for (int n = 0; n < numk; n++) {
-                int y1 = max(0, (int) (kseedsy[n] - offset));
-                int y2 = min(m_height, (int) (kseedsy[n] + offset));
-                int x1 = max(0, (int) (kseedsx[n] - offset));
-                int x2 = min(m_width, (int) (kseedsx[n] + offset));
-                if (x < x1 || x >= x2 || y < y1 || y >= y2)continue;
-                distlab[i] = (l - kseedsl[n]) * (l - kseedsl[n]) +
-                             (a - kseedsa[n]) * (a - kseedsa[n]) +
-                             (b - kseedsb[n]) * (b - kseedsb[n]);
-                distxy[i] = (x - kseedsx[n]) * (x - kseedsx[n]) +
-                            (y - kseedsy[n]) * (y - kseedsy[n]);
-                //------------------------------------------------------------------------
-                double dist = distlab[i] / maxlab[n] + distxy[i] * invxywt;//only varying m, prettier superpixels
-                //double dist = distlab[i]/maxlab[n] + distxy[i]/maxxy[n];//varying both m and S
-                //------------------------------------------------------------------------
-                if (dist < distvec[i]) {
-                    distvec[i] = dist;
-                    klabels[i] = n;
-                }
-            }
-        }
-
-//        for (int n = 0; n < numk; n++) {
-//            int y1 = max(0, (int) (kseedsy[n] - offset));
-//            int y2 = min(m_height, (int) (kseedsy[n] + offset));
-//            int x1 = max(0, (int) (kseedsx[n] - offset));
-//            int x2 = min(m_width, (int) (kseedsx[n] + offset));
-//            for (int y = y1; y < y2; y++) {
-//                for (int x = x1; x < x2; x++) {
-//                    int i = y * m_width + x;
-//                    //_ASSERT( y < m_height && x < m_width && y >= 0 && x >= 0 );
-//
-//                    double l = m_lvec[i];
-//                    double a = m_avec[i];
-//                    double b = m_bvec[i];
-//
-//                    distlab[i] = (l - kseedsl[n]) * (l - kseedsl[n]) +
-//                                 (a - kseedsa[n]) * (a - kseedsa[n]) +
-//                                 (b - kseedsb[n]) * (b - kseedsb[n]);
-//
-//                    distxy[i] = (x - kseedsx[n]) * (x - kseedsx[n]) +
-//                                (y - kseedsy[n]) * (y - kseedsy[n]);
-//
-//                    //------------------------------------------------------------------------
-//                    double dist = distlab[i] / maxlab[n] + distxy[i] * invxywt;//only varying m, prettier superpixels
-//                    //double dist = distlab[i]/maxlab[n] + distxy[i]/maxxy[n];//varying both m and S
-//                    //------------------------------------------------------------------------
-//
-//                    if (dist < distvec[i]) {
-//                        distvec[i] = dist;
-//                        klabels[i] = n;
-//                    }
+//#ifdef _OPENMP
+//#pragma omp parallel for num_threads(64)
+//#endif
+//        for (int i = 0; i < sz; i++) {
+//            double l = m_lvec[i];
+//            double a = m_avec[i];
+//            double b = m_bvec[i];
+//            int x = i % m_width;
+//            int y = i / m_width;
+//            for (int n = 0; n < numk; n++) {
+//                int y1 = max(0, (int) (kseedsy[n] - offset));
+//                int y2 = min(m_height, (int) (kseedsy[n] + offset));
+//                int x1 = max(0, (int) (kseedsx[n] - offset));
+//                int x2 = min(m_width, (int) (kseedsx[n] + offset));
+//                if (x < x1 || x >= x2 || y < y1 || y >= y2)continue;
+//                distlab[i] = (l - kseedsl[n]) * (l - kseedsl[n]) +
+//                             (a - kseedsa[n]) * (a - kseedsa[n]) +
+//                             (b - kseedsb[n]) * (b - kseedsb[n]);
+//                distxy[i] = (x - kseedsx[n]) * (x - kseedsx[n]) +
+//                            (y - kseedsy[n]) * (y - kseedsy[n]);
+//                //------------------------------------------------------------------------
+//                double dist = distlab[i] / maxlab[n] + distxy[i] * invxywt;//only varying m, prettier superpixels
+//                //double dist = distlab[i]/maxlab[n] + distxy[i]/maxxy[n];//varying both m and S
+//                //------------------------------------------------------------------------
+//                if (dist < distvec[i]) {
+//                    distvec[i] = dist;
+//                    klabels[i] = n;
 //                }
 //            }
 //        }
+
+        for (int n = 0; n < numk; n++) {
+            int y1 = max(0, (int) (kseedsy[n] - offset));
+            int y2 = min(m_height, (int) (kseedsy[n] + offset));
+            int x1 = max(0, (int) (kseedsx[n] - offset));
+            int x2 = min(m_width, (int) (kseedsx[n] + offset));
+
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(64)
+#endif
+            for (int y = y1; y < y2; y++) {
+                for (int x = x1; x < x2; x++) {
+                    int i = y * m_width + x;
+                    //_ASSERT( y < m_height && x < m_width && y >= 0 && x >= 0 );
+
+                    double l = m_lvec[i];
+                    double a = m_avec[i];
+                    double b = m_bvec[i];
+
+                    distlab[i] = (l - kseedsl[n]) * (l - kseedsl[n]) +
+                                 (a - kseedsa[n]) * (a - kseedsa[n]) +
+                                 (b - kseedsb[n]) * (b - kseedsb[n]);
+
+                    distxy[i] = (x - kseedsx[n]) * (x - kseedsx[n]) +
+                                (y - kseedsy[n]) * (y - kseedsy[n]);
+
+                    //------------------------------------------------------------------------
+                    double dist = distlab[i] / maxlab[n] + distxy[i] * invxywt;//only varying m, prettier superpixels
+                    //double dist = distlab[i]/maxlab[n] + distxy[i]/maxxy[n];//varying both m and S
+                    //------------------------------------------------------------------------
+
+                    if (dist < distvec[i]) {
+                        distvec[i] = dist;
+                        klabels[i] = n;
+                    }
+                }
+            }
+        }
 
         auto endTime = Clock::now();
         auto compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
@@ -433,16 +442,30 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
         //-----------------------------------------------------------------
         // Assign the max color distance for a cluster
         //-----------------------------------------------------------------
+
+        startTime = Clock::now();
         if (0 == numitr) {
             maxlab.assign(numk, 1);
             maxxy.assign(numk, 1);
         }
+        endTime = Clock::now();
+        compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
+        minCost2 += compTime.count() / 1000.0;
+
+
         {
+            startTime = Clock::now();
             for (int i = 0; i < sz; i++) {
                 if (maxlab[klabels[i]] < distlab[i]) maxlab[klabels[i]] = distlab[i];
                 if (maxxy[klabels[i]] < distxy[i]) maxxy[klabels[i]] = distxy[i];
             }
+            endTime = Clock::now();
+            compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
+            minCost3 += compTime.count() / 1000.0;
         }
+
+
+        startTime = Clock::now();
         //-----------------------------------------------------------------
         // Recalculate the centroid and store in the seed values
         //-----------------------------------------------------------------
@@ -452,6 +475,11 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
         sigmax.assign(numk, 0);
         sigmay.assign(numk, 0);
         clustersize.assign(numk, 0);
+        endTime = Clock::now();
+        compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
+        minCost4 += compTime.count() / 1000.0;
+
+        startTime = Clock::now();
         for (int j = 0; j < sz; j++) {
             int temp = klabels[j];
             //_ASSERT(klabels[j] >= 0);
@@ -463,6 +491,12 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
 
             clustersize[klabels[j]]++;
         }
+        endTime = Clock::now();
+        compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
+        minCost5 += compTime.count() / 1000.0;
+
+
+        startTime = Clock::now();
 
         {
             for (int k = 0; k < numk; k++) {
@@ -481,9 +515,17 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
                 kseedsy[k] = sigmay[k] * inv[k];
             }
         }
+        endTime = Clock::now();
+        compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
+        minCost6 += compTime.count() / 1000.0;
     }
 
     cout << "minCost : " << minCost << endl;
+    cout << "minCost2 : " << minCost2 << endl;
+    cout << "minCost3 : " << minCost3 << endl;
+    cout << "minCost4 : " << minCost4 << endl;
+    cout << "minCost5 : " << minCost5 << endl;
+    cout << "minCost6 : " << minCost6 << endl;
 }
 
 //===========================================================================
