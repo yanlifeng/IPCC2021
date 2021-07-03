@@ -1,0 +1,1 @@
+icpc -std=c++11 -o SLIC SLIC.cpp -par-affinity=compact -Ofast -mavx2 -fopenmp -DTimer
