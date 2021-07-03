@@ -66,14 +66,15 @@ private:
     // SLICO (SLIC Zero) varies only M dynamicaly, not S.
     //============================================================================
     void PerformSuperpixelSegmentation_VariableSandM(
-            vector<double> &kseedsl,
-            vector<double> &kseedsa,
-            vector<double> &kseedsb,
-            vector<double> &kseedsx,
-            vector<double> &kseedsy,
+            double *kseedsl,
+            double *kseedsa,
+            double *kseedsb,
+            double *kseedsx,
+            double *kseedsy,
             int *klabels,
             const int &STEP,
-            const int &NUMITR);
+            const int &NUMITR,
+            const int numk);
 
     //============================================================================
     // Pick seeds for superpixels when number of superpixels is input.
