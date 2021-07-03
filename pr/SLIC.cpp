@@ -353,47 +353,11 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
 
 #endif
 
-    double *sigmal = new double[numk];
-    double *sigmaa = new double[numk];
-    double *sigmab = new double[numk];
-    double *sigmax = new double[numk];
-    double *sigmay = new double[numk];
-    int *clustersize = new int[numk];
-
-    double **sigmalT = new double *[threadNumber];
-    for (int i = 0; i < threadNumber; i++) {
-        sigmalT[i] = new double[numk];
-    }
-    double **sigmaaT = new double *[threadNumber];
-    for (int i = 0; i < threadNumber; i++) {
-        sigmaaT[i] = new double[numk];
-    }
-    double **sigmabT = new double *[threadNumber];
-    for (int i = 0; i < threadNumber; i++) {
-        sigmabT[i] = new double[numk];
-    }
-    double **sigmaxT = new double *[threadNumber];
-    for (int i = 0; i < threadNumber; i++) {
-        sigmaxT[i] = new double[numk];
-    }
-    double **sigmayT = new double *[threadNumber];
-    for (int i = 0; i < threadNumber; i++) {
-        sigmayT[i] = new double[numk];
-    }
-    int **clustersizeT = new int *[threadNumber];
-    for (int i = 0; i < threadNumber; i++) {
-        clustersizeT[i] = new int[numk];
-    }
-
     double *distxy = new double[sz];
     double *distlab = new double[sz];
     double *distvec = new double[sz];
     double *maxlab = new double[numk];
-
-    double **maxlabT = new double *[threadNumber];
-    for (int i = 0; i < threadNumber; i++) {
-        maxlabT[i] = new double[numk];
-    }
+    vector<int> G[threadNumber][numk];
 #ifdef Timer
     auto endTime = Clock::now();
     auto compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
@@ -429,7 +393,6 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
                 for (int x = x1; x < x2; x++) {
                     int i = y * m_width + x;
                     //_ASSERT( y < m_height && x < m_width && y >= 0 && x >= 0 );
-
                     double l = m_lvec[i];
                     double a = m_avec[i];
                     double b = m_bvec[i];
@@ -437,18 +400,13 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
                     distlab[i] = (l - kseedsl[n]) * (l - kseedsl[n]) +
                                  (a - kseedsa[n]) * (a - kseedsa[n]) +
                                  (b - kseedsb[n]) * (b - kseedsb[n]);
-
                     distxy[i] = (x - kseedsx[n]) * (x - kseedsx[n]) +
                                 (y - kseedsy[n]) * (y - kseedsy[n]);
-
                     //------------------------------------------------------------------------
                     double dist =
                             distlab[i] / maxlab[n] + distxy[i] * invxywt;//only varying m, prettier superpixels
                     //double dist = distlab[i]/maxlab[n] + distxy[i]/maxxy[n];//varying both m and S
                     //------------------------------------------------------------------------
-
-
-
                     if (dist < distvec[i]) {
                         distvec[i] = dist;
                         klabels[i] = n;
@@ -457,39 +415,44 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
             }
         }
 #ifdef Timer
-
-        auto endTime = Clock::now();
-        auto compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
+        endTime = Clock::now();
+        compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
         minCost1 += compTime.count() / 1000.0;
         //-----------------------------------------------------------------
         // Assign the max color distance for a cluster
         //-----------------------------------------------------------------
-
+        startTime = Clock::now();
+#endif
+#pragma omp parallel for num_threads(threadNumber)
+        for (int i = 0; i < threadNumber; i++)
+            for (int j = 0; j < numk; j++)
+                G[i][j].clear();
+#pragma omp parallel for num_threads(threadNumber)
+        for (int i = 0; i < sz; i++) {
+            int id = omp_get_thread_num();
+            G[id][klabels[i]].push_back(i);
+        }
+#ifdef Timer
+        endTime = Clock::now();
+        compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
+        minCost2 += compTime.count() / 1000.0;
         startTime = Clock::now();
 #endif
         if (0 == numitr) {
-#pragma omp parallel for num_threads(threadNumber)
-            for (int i = 0; i < threadNumber; i++)
-                for (int j = 0; j < numk; j++)
-                    maxlabT[i][j] = 1;
 #pragma omp parallel for num_threads(threadNumber)
             for (int i = 0; i < numk; i++) {
                 maxlab[i] = 1;
             }
         }
-
-#pragma omp parallel for num_threads(threadNumber)
-        for (int i = 0; i < sz; i++) {
-            int id = omp_get_thread_num();
-            maxlabT[id][klabels[i]] = max(maxlabT[id][klabels[i]], distlab[i]);
-        }
 #pragma omp parallel for num_threads(threadNumber)
         for (int i = 0; i < numk; i++)
             for (int j = 0; j < threadNumber; j++)
-                maxlab[i] = max(maxlab[i], maxlabT[j][i]);
+                for (int id:G[j][i]) {
+                    maxlab[i] = max(maxlab[i], distlab[id]);
+                }
+
 
 #ifdef Timer
-
         endTime = Clock::now();
         compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
         minCost3 += compTime.count() / 1000.0;
@@ -500,40 +463,29 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
         //-----------------------------------------------------------------
         // Recalculate the centroid and store in the seed values
         //-----------------------------------------------------------------
-#pragma omp parallel for num_threads(threadNumber)
-        for (int i = 0; i < threadNumber; i++)
-            for (int j = 0; j < numk; j++) {
-                sigmalT[i][j] = sigmaaT[i][j] = sigmabT[i][j] = sigmaxT[i][j] = sigmayT[i][j] = clustersizeT[i][j] = 0;
-            }
+
 #pragma omp parallel for num_threads(threadNumber)
         for (int i = 0; i < numk; i++) {
-            sigmal[i] = sigmaa[i] = sigmab[i] = sigmax[i] = sigmay[i] = clustersize[i] = 0;
-        }
-#pragma omp parallel for num_threads(threadNumber)
-        for (int i = 0; i < sz; i++) {
-            int id = omp_get_thread_num();
-            //TODO klabels[j] < 0 ?
-            //_ASSERT(klabels[j] >= 0);
-            sigmalT[id][klabels[i]] += m_lvec[i];
-            sigmaaT[id][klabels[i]] += m_avec[i];
-            sigmabT[id][klabels[i]] += m_bvec[i];
-            sigmaxT[id][klabels[i]] += (i % m_width);
-            sigmayT[id][klabels[i]] += (i / m_width);
-            clustersizeT[id][klabels[i]]++;
+            double cl = 0, ca = 0, cb = 0;
+            int cx = 0, cy = 0, cs = 0;
+            for (int j = 0; j < threadNumber; j++)
+                for (int id:G[j][i]) {
+                    cl += m_lvec[id];
+                    ca += m_avec[id];
+                    cb += m_bvec[id];
+                    cx += (id % m_width);
+                    cy += (id / m_width);
+                    cs++;
+                }
+            double inv = 1.0 / cs;
+            kseedsl[i] = cl * inv;
+            kseedsa[i] = ca * inv;
+            kseedsb[i] = cb * inv;
+            kseedsx[i] = cx * inv;
+            kseedsy[i] = cy * inv;
         }
 
-#pragma omp parallel for num_threads(threadNumber)
-        for (int i = 0; i < numk; i++)
-            for (int j = 0; j < threadNumber; j++) {
-                sigmal[i] += sigmalT[j][i];
-                sigmaa[i] += sigmaaT[j][i];
-                sigmab[i] += sigmabT[j][i];
-                sigmax[i] += sigmaxT[j][i];
-                sigmay[i] += sigmayT[j][i];
-                clustersize[i] += clustersizeT[j][i];
-            }
 #ifdef Timer
-
         endTime = Clock::now();
         compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
         minCost5 += compTime.count() / 1000.0;
@@ -541,15 +493,6 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
 
         startTime = Clock::now();
 #endif
-#pragma omp parallel for num_threads(threadNumber)
-        for (int k = 0; k < numk; k++) {
-            double inv = 1.0 / clustersize[k];
-            kseedsl[k] = sigmal[k] * inv;
-            kseedsa[k] = sigmaa[k] * inv;
-            kseedsb[k] = sigmab[k] * inv;
-            kseedsx[k] = sigmax[k] * inv;
-            kseedsy[k] = sigmay[k] * inv;
-        }
 #ifdef Timer
 
         endTime = Clock::now();
