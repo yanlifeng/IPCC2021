@@ -79,15 +79,15 @@ include CMakeFiles/pr.dir/flags.make
 CMakeFiles/pr.dir/SLIC.cpp.o: CMakeFiles/pr.dir/flags.make
 CMakeFiles/pr.dir/SLIC.cpp.o: ../SLIC.cpp
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/ylf9811/Desktop/IPCC2021/pr/cmake-build-debug/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/pr.dir/SLIC.cpp.o"
-	/usr/local/Cellar/gcc@8/8.4.0_1/bin/g++-8 $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -o CMakeFiles/pr.dir/SLIC.cpp.o -c /Users/ylf9811/Desktop/IPCC2021/pr/SLIC.cpp
+	/usr/local/Cellar/gcc@8/8.4.0_1/bin/gcc-8 $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -o CMakeFiles/pr.dir/SLIC.cpp.o -c /Users/ylf9811/Desktop/IPCC2021/pr/SLIC.cpp
 
 CMakeFiles/pr.dir/SLIC.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/pr.dir/SLIC.cpp.i"
-	/usr/local/Cellar/gcc@8/8.4.0_1/bin/g++-8 $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/ylf9811/Desktop/IPCC2021/pr/SLIC.cpp > CMakeFiles/pr.dir/SLIC.cpp.i
+	/usr/local/Cellar/gcc@8/8.4.0_1/bin/gcc-8 $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/ylf9811/Desktop/IPCC2021/pr/SLIC.cpp > CMakeFiles/pr.dir/SLIC.cpp.i
 
 CMakeFiles/pr.dir/SLIC.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/pr.dir/SLIC.cpp.s"
-	/usr/local/Cellar/gcc@8/8.4.0_1/bin/g++-8 $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/ylf9811/Desktop/IPCC2021/pr/SLIC.cpp -o CMakeFiles/pr.dir/SLIC.cpp.s
+	/usr/local/Cellar/gcc@8/8.4.0_1/bin/gcc-8 $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/ylf9811/Desktop/IPCC2021/pr/SLIC.cpp -o CMakeFiles/pr.dir/SLIC.cpp.s
 
 # Object files for target pr
 pr_OBJECTS = \

@@ -406,6 +406,9 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
     }
     double invxywt = 1.0 / (STEP * STEP);//NOTE: this is different from how usual SLIC/LKM works
 
+
+
+
     while (numitr < NUMITR) {
         //------
         //cumerr = 0;
@@ -418,6 +421,8 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
         for (int i = 0; i < sz; i++) {
             distvec[i] = DBL_MAX;
         }
+
+
         for (int n = 0; n < numk; n++) {
             int y1 = max(0, (int) (kseedsy[n] - offset));
             int y2 = min(m_height, (int) (kseedsy[n] + offset));
@@ -426,7 +431,7 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
 
 #pragma omp parallel for num_threads(threadNumber)
             for (int y = y1; y < y2; y++) {
-#pragma simd vectorlength(8)
+//#pragma simd vectorlength(4)
                 for (int x = x1; x < x2; x++) {
                     int i = y * m_width + x;
                     //_ASSERT( y < m_height && x < m_width && y >= 0 && x >= 0 );
@@ -449,8 +454,11 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
                     //------------------------------------------------------------------------
 
                     if (dist < distvec[i]) {
+
                         distvec[i] = dist;
                         klabels[i] = n;
+
+
                     }
                 }
             }
@@ -636,8 +644,10 @@ void SLIC::EnforceLabelConnectivity(
 #ifdef Timer
     double minCost0 = 0;
     double minCost1 = 0;
+    double minCost2 = 0;
     auto startTime = Clock::now();
 #endif
+#pragma omp parallel for num_threads(threadNumber)
     for (int i = 0; i < sz; i++) nlabels[i] = -1;
 #ifdef Timer
     auto endTime = Clock::now();
@@ -645,27 +655,53 @@ void SLIC::EnforceLabelConnectivity(
     minCost0 += compTime.count() / 1000.0;
     startTime = Clock::now();
 #endif
+
+//    vector<int> G[numlabels];
+//
+//    for (int i = 0; i < sz; i++) {
+//        G[labels[i]].push_back(i);
+//    }
+#ifdef Timer
+    endTime = Clock::now();
+    compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
+    minCost1 += compTime.count() / 1000.0;
+    startTime = Clock::now();
+#endif
+
     int label(0);
-    int *xvec = new int[sz];
-    int *yvec = new int[sz];
-    int oindex(0);
     int adjlabel(0);//adjacent label
+    int oindex(0);
+
+    int *q1x = new int[sz];
+    int *q1y = new int[sz];
+    int *q2x = new int[sz];
+    int *q2y = new int[sz];
+    int *q = new int[sz];
+
+    int n1, n2, nm;
+
+
     for (int j = 0; j < height; j++) {
         for (int k = 0; k < width; k++) {
             if (0 > nlabels[oindex]) {
                 nlabels[oindex] = label;
+                n1 = 0;
+                n2 = 0;
+                nm = 0;
                 //--------------------
                 // Start a new segment
                 //--------------------
-                xvec[0] = k;
-                yvec[0] = j;
+                q1x[n1] = k;
+                q1y[n1] = j;
+                n1++;
+                q[nm++] = oindex;
                 //-------------------------------------------------------
                 // Quickly find an adjacent label for use later if needed
                 //-------------------------------------------------------
                 {
                     for (int n = 0; n < 4; n++) {
-                        int x = xvec[0] + dx4[n];
-                        int y = yvec[0] + dy4[n];
+                        int x = k + dx4[n];
+                        int y = j + dy4[n];
                         if ((x >= 0 && x < width) && (y >= 0 && y < height)) {
                             int nindex = y * width + x;
                             if (nlabels[nindex] >= 0) adjlabel = nlabels[nindex];
@@ -673,33 +709,43 @@ void SLIC::EnforceLabelConnectivity(
                     }
                 }
 
-                int count(1);
-                for (int c = 0; c < count; c++) {
-                    for (int n = 0; n < 4; n++) {
-                        int x = xvec[c] + dx4[n];
-                        int y = yvec[c] + dy4[n];
 
-                        if ((x >= 0 && x < width) && (y >= 0 && y < height)) {
-                            int nindex = y * width + x;
-
-                            if (0 > nlabels[nindex] && labels[oindex] == labels[nindex]) {
-                                xvec[count] = x;
-                                yvec[count] = y;
-                                nlabels[nindex] = label;
-                                count++;
+                while (n1 > 0) {
+                    int threads = min(n1, threadNumber);
+#pragma omp parallel for num_threads(threads)
+                    for (int c = 0; c < n1; c++) {
+                        for (int n = 0; n < 4; n++) {
+                            int x = q1x[c] + dx4[n];
+                            int y = q1y[c] + dy4[n];
+                            if ((x >= 0 && x < width) && (y >= 0 && y < height)) {
+                                int nindex = y * width + x;
+                                if (0 > nlabels[nindex] && labels[oindex] == labels[nindex]) {
+                                    nlabels[nindex] = label;
+#pragma omp critical
+                                    {
+                                        q2x[n2] = x;
+                                        q2y[n2] = y;
+                                        n2++;
+                                        q[nm++] = nindex;
+                                    }
+                                }
                             }
                         }
-
                     }
+                    n1 = n2;
+                    n2 = 0;
+                    swap(q1x, q2x);
+                    swap(q1y, q2y);
                 }
+
                 //-------------------------------------------------------
                 // If segment size is less then a limit, assign an
                 // adjacent label found before, and decrement label count.
                 //-------------------------------------------------------
-                if (count <= SUPSZ >> 2) {
-                    for (int c = 0; c < count; c++) {
-                        int ind = yvec[c] * width + xvec[c];
-                        nlabels[ind] = adjlabel;
+                if (nm <= SUPSZ >> 2) {
+#pragma omp parallel for num_threads(threadNumber)
+                    for (int c = 0; c < nm; c++) {
+                        nlabels[q[c]] = adjlabel;
                     }
                     label--;
                 }
@@ -710,14 +756,18 @@ void SLIC::EnforceLabelConnectivity(
     }
     numlabels = label;
 
-    if (xvec) delete[] xvec;
-    if (yvec) delete[] yvec;
+    delete[] q1x;
+    delete[] q1y;
+    delete[] q2x;
+    delete[] q2y;
+    delete[] q;
 #ifdef Timer
     endTime = Clock::now();
     compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
-    minCost1 += compTime.count() / 1000.0;
+    minCost2 += compTime.count() / 1000.0;
     cout << "minCost0 : " << minCost0 << endl;
     cout << "minCost1 : " << minCost1 << endl;
+    cout << "minCost2 : " << minCost2 << endl;
 #endif
 
 
@@ -810,7 +860,9 @@ void SLIC::PerformSLICO_ForGivenK(
 
     PerformSuperpixelSegmentation_VariableSandM(kdseedsl, kdseedsa, kdseedsb, kdseedsx, kdseedsy, klabels, STEP, 10,
                                                 numk);
-    numlabels = kseedsl.size();
+    //TODO
+    numlabels = numk;
+//    numlabels = kseedsl.size();
     endTime = Clock::now();
     compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
     cout << "p3 cost : " << compTime.count() / 1000 << " ms" << endl;

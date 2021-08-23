@@ -1,4 +1,4 @@
-set(CMAKE_CXX_COMPILER "/usr/local/Cellar/gcc@8/8.4.0_1/bin/g++-8")
+set(CMAKE_CXX_COMPILER "/usr/local/Cellar/gcc@8/8.4.0_1/bin/gcc-8")
 set(CMAKE_CXX_COMPILER_ARG1 "")
 set(CMAKE_CXX_COMPILER_ID "GNU")
 set(CMAKE_CXX_COMPILER_VERSION "8.4.0")
@@ -85,6 +85,6 @@ set(CMAKE_CXX_SYSROOT_FLAG "-isysroot")
 set(CMAKE_CXX_OSX_DEPLOYMENT_TARGET_FLAG "-mmacosx-version-min=")
 
 set(CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES "/usr/local/Cellar/gcc@8/8.4.0_1/include/c++/8.4.0;/usr/local/Cellar/gcc@8/8.4.0_1/include/c++/8.4.0/x86_64-apple-darwin19;/usr/local/Cellar/gcc@8/8.4.0_1/include/c++/8.4.0/backward;/usr/local/Cellar/gcc@8/8.4.0_1/lib/gcc/8/gcc/x86_64-apple-darwin19/8.4.0/include;/usr/local/Cellar/gcc@8/8.4.0_1/lib/gcc/8/gcc/x86_64-apple-darwin19/8.4.0/include-fixed;/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX11.3.sdk/usr/include;/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX11.3.sdk/System/Library/Frameworks")
-set(CMAKE_CXX_IMPLICIT_LINK_LIBRARIES "stdc++;gcc_ext.10.5;gcc")
+set(CMAKE_CXX_IMPLICIT_LINK_LIBRARIES "gcc_ext.10.5;gcc")
 set(CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES "/usr/local/Cellar/gcc@8/8.4.0_1/lib/gcc/8/gcc/x86_64-apple-darwin19/8.4.0;/usr/local/Cellar/gcc@8/8.4.0_1/lib/gcc/8;/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX11.3.sdk/usr/lib")
 set(CMAKE_CXX_IMPLICIT_LINK_FRAMEWORK_DIRECTORIES "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX11.3.sdk/System/Library/Frameworks")
