@@ -645,22 +645,39 @@ void SLIC::EnforceLabelConnectivity(
     double minCost0 = 0;
     double minCost1 = 0;
     double minCost2 = 0;
+    double minCost3 = 0;
+    double minCost4 = 0;
     auto startTime = Clock::now();
+    int threadNumberSmall = 8;
+    int threadNumberMid = 16;
 #endif
+    int *tmpLables = new int[sz];
 #pragma omp parallel for num_threads(threadNumber)
     for (int i = 0; i < sz; i++) nlabels[i] = -1;
+#pragma omp parallel for num_threads(threadNumber)
+    for (int i = 0; i < sz; i++) tmpLables[i] = -1;
+//TODO vector P size
+    vector<int> P[numlabels * numlabels];
+
 #ifdef Timer
     auto endTime = Clock::now();
     auto compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
     minCost0 += compTime.count() / 1000.0;
     startTime = Clock::now();
 #endif
-
-//    vector<int> G[numlabels];
-//
-//    for (int i = 0; i < sz; i++) {
-//        G[labels[i]].push_back(i);
-//    }
+    vector<int> G[threadNumberSmall][numlabels];
+#ifdef Timer
+    endTime = Clock::now();
+    compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
+    minCost4 += compTime.count() / 1000.0;
+    startTime = Clock::now();
+#endif
+#pragma omp parallel for num_threads(threadNumberSmall)
+    for (int i = 0; i < sz; i++) {
+        int tid = omp_get_thread_num();
+//        int tid = 0;
+        G[tid][labels[i]].push_back(i);
+    }
 #ifdef Timer
     endTime = Clock::now();
     compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
@@ -672,102 +689,127 @@ void SLIC::EnforceLabelConnectivity(
     int adjlabel(0);//adjacent label
     int oindex(0);
 
-    int *q1x = new int[sz];
-    int *q1y = new int[sz];
-    int *q2x = new int[sz];
-    int *q2y = new int[sz];
-    int *q = new int[sz];
+    int nowTot = 0;
+    int mxLable = 0;
+#pragma omp parallel for num_threads(threadNumberMid)
+    for (int id = 0; id < numlabels; id++) {
+//        cout << "now solve " << id << endl;
+        int nowLable = id;
 
-    int n1, n2, nm;
+        int siz = 0;
+        for (int tid = 0; tid < threadNumberSmall; tid++)
+            siz += G[tid][id].size();
+//        cout << "siz " << siz << endl;
+        int hasOk = 0;
+        int *que = new int[siz];
+        while (hasOk < siz) {
+            int now = -1;
+            for (int tid = 0; tid < threadNumberSmall; tid++) {
+                for (int i = 0; i < G[tid][id].size(); i++) {
+                    if (tmpLables[G[tid][id][i]] == -1) {
+                        now = G[tid][id][i];
+                        break;
+                    }
+                }
+            }
+
+//            printf("this round seed is %d\n", now);
+            if (now == -1) {
+                cout << "GG" << endl;
+                break;
+            }
+            int head = 0, tail = 0;
+            que[tail++] = now;
+            tmpLables[now] = nowLable;
+            oindex = now;
+            while (head < tail) {
+                int k = que[head++];
+                int x = k % width;
+                int y = k / width;
+                for (int i = 0; i < 4; i++) {
+                    int xx = x + dx4[i];
+                    int yy = y + dy4[i];
+                    if ((xx >= 0 && xx < width) && (yy >= 0 && yy < height)) {
+                        int nindex = yy * width + xx;
+
+                        if (0 > tmpLables[nindex] && labels[oindex] == labels[nindex]) {
+                            que[tail++] = nindex;
+                            tmpLables[nindex] = nowLable;
+                        }
+                    }
+                }
+
+            }
+            P[nowLable].resize(tail);
+            for (int i = 0; i < tail; i++)
+                P[nowLable][i] = que[i];
+//#pragma omp critical
+//            {
+//                mxLable = max(mxLable, nowLable);
+//                nowTot += tail;
+//            }
+            hasOk += tail;
+            nowLable += numlabels;
+        }
+
+        delete[]que;
+    }
 
 
+#ifdef Timer
+    endTime = Clock::now();
+    compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
+    minCost2 += compTime.count() / 1000.0;
+    startTime = Clock::now();
+#endif
+    oindex = 0;
     for (int j = 0; j < height; j++) {
         for (int k = 0; k < width; k++) {
             if (0 > nlabels[oindex]) {
                 nlabels[oindex] = label;
-                n1 = 0;
-                n2 = 0;
-                nm = 0;
-                //--------------------
-                // Start a new segment
-                //--------------------
-                q1x[n1] = k;
-                q1y[n1] = j;
-                n1++;
-                q[nm++] = oindex;
-                //-------------------------------------------------------
-                // Quickly find an adjacent label for use later if needed
-                //-------------------------------------------------------
-                {
-                    for (int n = 0; n < 4; n++) {
+                int bel = tmpLables[oindex];
+                int count2 = P[bel].size();
+                if (count2 <= SUPSZ >> 2) {
+                    for (int n = 3; n >= 0; n--) {
                         int x = k + dx4[n];
                         int y = j + dy4[n];
                         if ((x >= 0 && x < width) && (y >= 0 && y < height)) {
                             int nindex = y * width + x;
-                            if (nlabels[nindex] >= 0) adjlabel = nlabels[nindex];
-                        }
-                    }
-                }
-
-
-                while (n1 > 0) {
-                    int threads = min(n1, threadNumber);
-#pragma omp parallel for num_threads(threads)
-                    for (int c = 0; c < n1; c++) {
-                        for (int n = 0; n < 4; n++) {
-                            int x = q1x[c] + dx4[n];
-                            int y = q1y[c] + dy4[n];
-                            if ((x >= 0 && x < width) && (y >= 0 && y < height)) {
-                                int nindex = y * width + x;
-                                if (0 > nlabels[nindex] && labels[oindex] == labels[nindex]) {
-                                    nlabels[nindex] = label;
-#pragma omp critical
-                                    {
-                                        q2x[n2] = x;
-                                        q2y[n2] = y;
-                                        n2++;
-                                        q[nm++] = nindex;
-                                    }
-                                }
+                            if (nlabels[nindex] >= 0) {
+                                adjlabel = nlabels[nindex];
+                                break;
                             }
                         }
                     }
-                    n1 = n2;
-                    n2 = 0;
-                    swap(q1x, q2x);
-                    swap(q1y, q2y);
-                }
 
-                //-------------------------------------------------------
-                // If segment size is less then a limit, assign an
-                // adjacent label found before, and decrement label count.
-                //-------------------------------------------------------
-                if (nm <= SUPSZ >> 2) {
-#pragma omp parallel for num_threads(threadNumber)
-                    for (int c = 0; c < nm; c++) {
-                        nlabels[q[c]] = adjlabel;
+#pragma omp parallel for num_threads(threadNumberSmall)
+                    for (int c = 0; c < count2; c++) {
+                        nlabels[P[bel][c]] = adjlabel;
                     }
                     label--;
+                } else {
+#pragma omp parallel for num_threads(threadNumberSmall)
+                    for (int c = 0; c < count2; c++) {
+                        nlabels[P[bel][c]] = label;
+                    }
                 }
                 label++;
             }
             oindex++;
         }
     }
+    delete[]tmpLables;
     numlabels = label;
 
-    delete[] q1x;
-    delete[] q1y;
-    delete[] q2x;
-    delete[] q2y;
-    delete[] q;
 #ifdef Timer
     endTime = Clock::now();
     compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
-    minCost2 += compTime.count() / 1000.0;
+    minCost3 += compTime.count() / 1000.0;
     cout << "minCost0 : " << minCost0 << endl;
     cout << "minCost1 : " << minCost1 << endl;
     cout << "minCost2 : " << minCost2 << endl;
+    cout << "minCost3 : " << minCost3 << endl;
+    cout << "minCost4 : " << minCost4 << endl;
 #endif
 
 
