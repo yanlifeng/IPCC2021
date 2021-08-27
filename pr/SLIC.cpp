@@ -1160,26 +1160,31 @@ int main(int argc, char **argv) {
     int height(0);
     char *input_image;
     char *check_image;
+    char *output_image;
     int m_spcount;
 
     int tag = atoi(argv[1]);
     if (tag == 1) {
         input_image = "input_image.ppm";
         check_image = "check.ppm";
+        output_image = "output_labels.ppm";
         m_spcount = 200;
     } else if (tag == 2) {
         input_image = "input_image2.ppm";
         check_image = "check2.ppm";
+        output_image = "output_labels2.ppm";
         m_spcount = 400;
     } else {
         input_image = "input_image3.ppm";
         check_image = "check3.ppm";
+        output_image = "output_labels3.ppm";
         m_spcount = 150;
     }
     if (my_rank == 0) {
         printf("m_spcount is %d\n", m_spcount);
         printf("input image is %s\n", input_image);
         printf("check image is %s\n", check_image);
+        printf("output image is %s\n", output_image);
     }
 
     LoadPPM(input_image, &img, &width, &height);
@@ -1209,7 +1214,7 @@ int main(int argc, char **argv) {
             cout << my_rank << "There are " << num << " points' labels are different from original file." << endl;
         }
 
-        slic.SaveSuperpixelLabels2PPM((char *) "output_labels.ppm", labels, width, height);
+        slic.SaveSuperpixelLabels2PPM(output_image, labels, width, height);
 
     }
     if (labels) delete[] labels;
