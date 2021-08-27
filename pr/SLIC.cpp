@@ -342,7 +342,7 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
 
     //----------------
     int offset = STEP;
-    if (my_rank == 0)cout << "offset " << offset << endl;
+    if (my_rank == 0)cout << "numk " << numk << endl;
     if (STEP < 10) offset = STEP * 1.5;
     //----------------
 
@@ -505,7 +505,6 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
             }
         }
 
-        if (numitr == NUMITR)break;
 
 #ifdef Timer
 
@@ -514,6 +513,17 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
         minCost1 += compTime.count() / 1000.0;
         startTime = Clock::now();
 #endif
+
+        if (numitr == NUMITR) {
+            if (my_rank == 0) {
+                MPI_Recv(klabels + rr, sz - (rr - ll), MPI_INT, 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            } else {
+                MPI_Send(klabels + ll, rr - ll, MPI_INT, 0, 1, MPI_COMM_WORLD);
+            }
+            break;
+        }
+
+
         if (0 == numitr) {
 #pragma omp parallel for num_threads(threadNumber)
             for (int i = 0; i < threadNumber; i++)
@@ -639,11 +649,19 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
 #endif
 
     }
-    if (my_rank == 0) {
-        MPI_Recv(klabels + rr, sz - (rr - ll), MPI_DOUBLE, 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    } else {
-        MPI_Send(klabels + ll, rr - ll, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
-    }
+
+#ifdef Timer
+    startTime = Clock::now();
+
+#endif
+
+
+#ifdef Timer
+
+    endTime = Clock::now();
+    compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
+    minCost5 += compTime.count() / 1000.0;
+#endif
 
     //TODO delete
 

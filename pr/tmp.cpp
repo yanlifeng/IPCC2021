@@ -505,6 +505,7 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
             }
         }
 
+
 #ifdef Timer
 
         auto endTime = Clock::now();
@@ -512,6 +513,36 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
         minCost1 += compTime.count() / 1000.0;
         startTime = Clock::now();
 #endif
+
+        if (numitr == NUMITR) {
+            exit(0);
+            if (my_rank == 0) {
+
+                MPI_Recv(klabels + rr, sz - (rr - ll), MPI_DOUBLE, 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+//        int tmpSiz = sz - (rr - ll);
+//        int smallSiz = ceil(1.0 * tmpSiz / 4);
+//        for (int i = 0; i < 4; i++) {
+//            int nowl = i * smallSiz;
+//            int nowr = min(tmpSiz, (i + 1) * smallSiz);
+//            MPI_Recv(klabels + rr + nowl, nowr - nowl, MPI_DOUBLE, 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+//        }
+            } else {
+
+                MPI_Send(klabels + ll, rr - ll, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
+
+//        int tmpSiz = rr - ll;
+//        int smallSiz = ceil(1.0 * tmpSiz / 4);
+//        for (int i = 0; i < 4; i++) {
+//            int nowl = i * smallSiz;
+//            int nowr = min(tmpSiz, (i + 1) * smallSiz);
+//            MPI_Send(klabels + ll + nowl, nowr - nowl, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
+//        }
+            }
+            break;
+        }
+
+
         if (0 == numitr) {
 #pragma omp parallel for num_threads(threadNumber)
             for (int i = 0; i < threadNumber; i++)
@@ -600,8 +631,8 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
                 maxlab[k] = max(maxlab[k], mxab[k]);
             }
 
-            for (int k = 0; k < numk; k++)cout << kseedsa[k] << " " << kseedsb[k] << " ";
-            cout << endl;
+//            for (int k = 0; k < numk; k++)cout << kseedsa[k] << " " << kseedsb[k] << " ";
+//            cout << endl;
         } else {
             MPI_Send(sigmal, numk, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
             MPI_Send(sigmaa, numk, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
@@ -637,6 +668,19 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
 #endif
 
     }
+
+#ifdef Timer
+    startTime = Clock::now();
+
+#endif
+
+
+#ifdef Timer
+
+    endTime = Clock::now();
+    compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
+    minCost5 += compTime.count() / 1000.0;
+#endif
 
     //TODO delete
 
