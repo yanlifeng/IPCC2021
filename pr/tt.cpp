@@ -442,10 +442,10 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
     int ll = my_rank * numPerNode;
     int rr = min(sz, (my_rank + 1) * numPerNode);
 
-//    if (my_rank == 0) {
-//        ll = 0;
-//        rr = sz;
-//    }
+    if (my_rank == 0) {
+        ll = 0;
+        rr = sz;
+    }
 
     printf("process %d word %d to %d\n", my_rank, ll, rr);
 
@@ -580,13 +580,13 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
         startTime = Clock::now();
 #endif
         if (my_rank == 0) {
-            MPI_Recv(sil, numk, MPI_DOUBLE, 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            MPI_Recv(sia, numk, MPI_DOUBLE, 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            MPI_Recv(sib, numk, MPI_DOUBLE, 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            MPI_Recv(six, numk, MPI_DOUBLE, 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            MPI_Recv(siy, numk, MPI_DOUBLE, 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            MPI_Recv(mxab, numk, MPI_DOUBLE, 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            MPI_Recv(csiz, numk, MPI_INT, 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+//            MPI_Recv(sil, numk, MPI_DOUBLE, 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+//            MPI_Recv(sia, numk, MPI_DOUBLE, 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+//            MPI_Recv(sib, numk, MPI_DOUBLE, 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+//            MPI_Recv(six, numk, MPI_DOUBLE, 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+//            MPI_Recv(siy, numk, MPI_DOUBLE, 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+//            MPI_Recv(mxab, numk, MPI_DOUBLE, 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+//            MPI_Recv(csiz, numk, MPI_INT, 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
 
 #pragma omp parallel for num_threads(threadNumber)
@@ -603,13 +603,13 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
             for (int k = 0; k < numk; k++)cout << kseedsa[k] << " " << kseedsb[k] << " ";
             cout << endl;
         } else {
-            MPI_Send(sigmal, numk, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
-            MPI_Send(sigmaa, numk, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
-            MPI_Send(sigmab, numk, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
-            MPI_Send(sigmax, numk, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
-            MPI_Send(sigmay, numk, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
-            MPI_Send(maxlab, numk, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
-            MPI_Send(clustersize, numk, MPI_INT, 0, 1, MPI_COMM_WORLD);
+//            MPI_Send(sigmal, numk, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
+//            MPI_Send(sigmaa, numk, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
+//            MPI_Send(sigmab, numk, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
+//            MPI_Send(sigmax, numk, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
+//            MPI_Send(sigmay, numk, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
+//            MPI_Send(maxlab, numk, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
+//            MPI_Send(clustersize, numk, MPI_INT, 0, 1, MPI_COMM_WORLD);
         }
 
 
