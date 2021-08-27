@@ -29,6 +29,7 @@
 #include "SLIC.h"
 #include <chrono>
 #include <cstring>
+#include <mpi.h>
 
 
 #include "omp.h"
@@ -53,6 +54,10 @@ const int threadNumber = 64;
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
+
+int my_rank, num_procs;
+int threadNumberSmall = 8;
+int threadNumberMid = 16;
 
 SLIC::SLIC() {
     m_lvec = NULL;
@@ -337,7 +342,7 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
 
     //----------------
     int offset = STEP;
-    cout << "offset " << offset << endl;
+    if (my_rank == 0)cout << "offset " << offset << endl;
     if (STEP < 10) offset = STEP * 1.5;
     //----------------
 
@@ -407,7 +412,16 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
     double invxywt = 1.0 / (STEP * STEP);//NOTE: this is different from how usual SLIC/LKM works
 
 
+    int numPerNode = ceil(1.0 * sz / num_procs);
+    int ll = my_rank * numPerNode;
+    int rr = min(sz, (my_rank + 1) * numPerNode);
 
+//    if (my_rank == 0) {
+//        ll = 0;
+//        rr = sz;
+//    }
+
+    printf("process %d word %d to %d\n", my_rank, ll, rr);
 
     while (numitr < NUMITR) {
         //------
@@ -421,158 +435,209 @@ void SLIC::PerformSuperpixelSegmentation_VariableSandM(
         for (int i = 0; i < sz; i++) {
             distvec[i] = DBL_MAX;
         }
+        int x1[numk], x2[numk], y1[numk], y2[numk];
+        double maxlab_inv[numk];
 
-
-        for (int n = 0; n < numk; n++) {
-            int y1 = max(0, (int) (kseedsy[n] - offset));
-            int y2 = min(m_height, (int) (kseedsy[n] + offset));
-            int x1 = max(0, (int) (kseedsx[n] - offset));
-            int x2 = min(m_width, (int) (kseedsx[n] + offset));
 
 #pragma omp parallel for num_threads(threadNumber)
-            for (int y = y1; y < y2; y++) {
-//#pragma simd vectorlength(4)
-                for (int x = x1; x < x2; x++) {
-                    int i = y * m_width + x;
-                    //_ASSERT( y < m_height && x < m_width && y >= 0 && x >= 0 );
-
-                    double l = m_lvec[i];
-                    double a = m_avec[i];
-                    double b = m_bvec[i];
-                    //TODO 这里distlab可能被相邻的8个聚类中心更新，但是更新完之后的值是最后一个聚类中心计算出来的，这样maxlab的更新就取决于n的循环顺序
-                    distlab[i] = (l - kseedsl[n]) * (l - kseedsl[n]) +
-                                 (a - kseedsa[n]) * (a - kseedsa[n]) +
-                                 (b - kseedsb[n]) * (b - kseedsb[n]);
-
-                    distxy[i] = (x - kseedsx[n]) * (x - kseedsx[n]) +
-                                (y - kseedsy[n]) * (y - kseedsy[n]);
-
-                    //------------------------------------------------------------------------
-                    double dist =
-                            distlab[i] / maxlab[n] + distxy[i] * invxywt;//only varying m, prettier superpixels
-                    //double dist = distlab[i]/maxlab[n] + distxy[i]/maxxy[n];//varying both m and S
-                    //------------------------------------------------------------------------
-
-                    if (dist < distvec[i]) {
-
-                        distvec[i] = dist;
-                        klabels[i] = n;
+        for (int n = 0; n < numk; n++) {
+            y1[n] = max(0, (int) (kseedsy[n] - offset));
+            y2[n] = min(m_height, (int) (kseedsy[n] + offset));
+            x1[n] = max(0, (int) (kseedsx[n] - offset));
+            x2[n] = min(m_width, (int) (kseedsx[n] + offset));
+            maxlab_inv[n] = 1.0 / maxlab[n];
+        }
 
 
-                    }
+#pragma omp parallel for num_threads(threadNumber)
+        for (int i = ll; i < rr; i++) {
+            int x = i % m_width, y = i / m_width;
+            double l = m_lvec[i];
+            double a = m_avec[i];
+            double b = m_bvec[i];
+            for (int n = 0; n < numk; n++) {
+                if (x < x1[n] || x >= x2[n] || y < y1[n] || y >= y2[n])continue;
+
+                //TODO 这里distlab可能被相邻的8个聚类中心更新，但是更新完之后的值是最后一个聚类中心计算出来的，这样maxlab的更新就取决于n的循环顺序
+                distlab[i] = (l - kseedsl[n]) * (l - kseedsl[n]) +
+                             (a - kseedsa[n]) * (a - kseedsa[n]) +
+                             (b - kseedsb[n]) * (b - kseedsb[n]);
+
+                distxy[i] = (x - kseedsx[n]) * (x - kseedsx[n]) +
+                            (y - kseedsy[n]) * (y - kseedsy[n]);
+
+                //------------------------------------------------------------------------
+                double dist = distlab[i] * maxlab_inv[n] + distxy[i] * invxywt;
+                //only varying m, prettier superpixels
+                //double dist = distlab[i]/maxlab[n] + distxy[i]/maxxy[n];//varying both m and S
+                //------------------------------------------------------------------------
+
+                if (dist < distvec[i]) {
+
+                    distvec[i] = dist;
+                    klabels[i] = n;
+
                 }
             }
         }
+
+
+        if (my_rank == 0) {
+//            cout << "process 0 ready to get data from process 1..." << endl;
+            MPI_Recv(distlab + rr, sz - (rr - ll), MPI_DOUBLE, 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+//            cout << "process 0 has gotten data1 from process 1..." << sz - (rr - ll) << endl;
+            MPI_Recv(klabels + rr, sz - (rr - ll), MPI_INT, 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+//            cout << "process 0 has gotten data2 from process 1..." << sz - (rr - ll) << endl;
+
+
 #ifdef Timer
 
-        auto endTime = Clock::now();
-        auto compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
-        minCost1 += compTime.count() / 1000.0;
-        //-----------------------------------------------------------------
-        // Assign the max color distance for a cluster
-        //-----------------------------------------------------------------
+            auto endTime = Clock::now();
+            auto compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
+            minCost1 += compTime.count() / 1000.0;
+            //-----------------------------------------------------------------
+            // Assign the max color distance for a cluster
+            //-----------------------------------------------------------------
 
-        startTime = Clock::now();
+            startTime = Clock::now();
 #endif
-        if (0 == numitr) {
+            if (0 == numitr) {
+#pragma omp parallel for num_threads(threadNumber)
+                for (int i = 0; i < threadNumber; i++)
+                    for (int j = 0; j < numk; j++)
+                        maxlabT[i][j] = 1;
+#pragma omp parallel for num_threads(threadNumber)
+                for (int i = 0; i < numk; i++) {
+                    maxlab[i] = 1;
+                }
+            }
+
+#pragma omp parallel for num_threads(threadNumber)
+            for (int i = 0; i < sz; i++) {
+                int id = omp_get_thread_num();
+                maxlabT[id][klabels[i]] = max(maxlabT[id][klabels[i]], distlab[i]);
+            }
+#pragma omp parallel for num_threads(threadNumber)
+            for (int i = 0; i < numk; i++)
+                for (int j = 0; j < threadNumber; j++)
+                    maxlab[i] = max(maxlab[i], maxlabT[j][i]);
+
+#ifdef Timer
+
+            endTime = Clock::now();
+            compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
+            minCost3 += compTime.count() / 1000.0;
+
+
+            startTime = Clock::now();
+#endif
+            //-----------------------------------------------------------------
+            // Recalculate the centroid and store in the seed values
+            //-----------------------------------------------------------------
+
 #pragma omp parallel for num_threads(threadNumber)
             for (int i = 0; i < threadNumber; i++)
-                for (int j = 0; j < numk; j++)
-                    maxlabT[i][j] = 1;
+                for (int j = 0; j < numk; j++) {
+                    sigmalT[i][j] = sigmaaT[i][j] = sigmabT[i][j] = sigmaxT[i][j] = sigmayT[i][j] = clustersizeT[i][j] = 0;
+                }
 #pragma omp parallel for num_threads(threadNumber)
             for (int i = 0; i < numk; i++) {
-                maxlab[i] = 1;
+                sigmal[i] = sigmaa[i] = sigmab[i] = sigmax[i] = sigmay[i] = clustersize[i] = 0;
             }
-        }
+#pragma omp parallel for num_threads(threadNumber)
+            for (int i = 0; i < sz; i++) {
+                int id = omp_get_thread_num();
+                //TODO klabels[j] < 0 ?
+                //_ASSERT(klabels[j] >= 0);
+                sigmalT[id][klabels[i]] += m_lvec[i];
+                sigmaaT[id][klabels[i]] += m_avec[i];
+                sigmabT[id][klabels[i]] += m_bvec[i];
+                sigmaxT[id][klabels[i]] += (i % m_width);
+                sigmayT[id][klabels[i]] += (i / m_width);
+                clustersizeT[id][klabels[i]]++;
+            }
 
 #pragma omp parallel for num_threads(threadNumber)
-        for (int i = 0; i < sz; i++) {
-            int id = omp_get_thread_num();
-            maxlabT[id][klabels[i]] = max(maxlabT[id][klabels[i]], distlab[i]);
-        }
-#pragma omp parallel for num_threads(threadNumber)
-        for (int i = 0; i < numk; i++)
-            for (int j = 0; j < threadNumber; j++)
-                maxlab[i] = max(maxlab[i], maxlabT[j][i]);
-
+            for (int i = 0; i < numk; i++)
+                for (int j = 0; j < threadNumber; j++) {
+                    sigmal[i] += sigmalT[j][i];
+                    sigmaa[i] += sigmaaT[j][i];
+                    sigmab[i] += sigmabT[j][i];
+                    sigmax[i] += sigmaxT[j][i];
+                    sigmay[i] += sigmayT[j][i];
+                    clustersize[i] += clustersizeT[j][i];
+                }
 #ifdef Timer
 
-        endTime = Clock::now();
-        compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
-        minCost3 += compTime.count() / 1000.0;
+            endTime = Clock::now();
+            compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
+            minCost5 += compTime.count() / 1000.0;
 
 
-        startTime = Clock::now();
+            startTime = Clock::now();
 #endif
-        //-----------------------------------------------------------------
-        // Recalculate the centroid and store in the seed values
-        //-----------------------------------------------------------------
 #pragma omp parallel for num_threads(threadNumber)
-        for (int i = 0; i < threadNumber; i++)
-            for (int j = 0; j < numk; j++) {
-                sigmalT[i][j] = sigmaaT[i][j] = sigmabT[i][j] = sigmaxT[i][j] = sigmayT[i][j] = clustersizeT[i][j] = 0;
-            }
-#pragma omp parallel for num_threads(threadNumber)
-        for (int i = 0; i < numk; i++) {
-            sigmal[i] = sigmaa[i] = sigmab[i] = sigmax[i] = sigmay[i] = clustersize[i] = 0;
-        }
-#pragma omp parallel for num_threads(threadNumber)
-        for (int i = 0; i < sz; i++) {
-            int id = omp_get_thread_num();
-            //TODO klabels[j] < 0 ?
-            //_ASSERT(klabels[j] >= 0);
-            sigmalT[id][klabels[i]] += m_lvec[i];
-            sigmaaT[id][klabels[i]] += m_avec[i];
-            sigmabT[id][klabels[i]] += m_bvec[i];
-            sigmaxT[id][klabels[i]] += (i % m_width);
-            sigmayT[id][klabels[i]] += (i / m_width);
-            clustersizeT[id][klabels[i]]++;
-        }
-
-#pragma omp parallel for num_threads(threadNumber)
-        for (int i = 0; i < numk; i++)
-            for (int j = 0; j < threadNumber; j++) {
-                sigmal[i] += sigmalT[j][i];
-                sigmaa[i] += sigmaaT[j][i];
-                sigmab[i] += sigmabT[j][i];
-                sigmax[i] += sigmaxT[j][i];
-                sigmay[i] += sigmayT[j][i];
-                clustersize[i] += clustersizeT[j][i];
+            for (int k = 0; k < numk; k++) {
+                double inv = 1.0 / clustersize[k];
+                kseedsl[k] = sigmal[k] * inv;
+                kseedsa[k] = sigmaa[k] * inv;
+                kseedsb[k] = sigmab[k] * inv;
+                kseedsx[k] = sigmax[k] * inv;
+                kseedsy[k] = sigmay[k] * inv;
             }
 #ifdef Timer
 
-        endTime = Clock::now();
-        compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
-        minCost5 += compTime.count() / 1000.0;
-
-
-        startTime = Clock::now();
+            endTime = Clock::now();
+            compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
+            minCost6 += compTime.count() / 1000.0;
 #endif
-#pragma omp parallel for num_threads(threadNumber)
-        for (int k = 0; k < numk; k++) {
-            double inv = 1.0 / clustersize[k];
-            kseedsl[k] = sigmal[k] * inv;
-            kseedsa[k] = sigmaa[k] * inv;
-            kseedsb[k] = sigmab[k] * inv;
-            kseedsx[k] = sigmax[k] * inv;
-            kseedsy[k] = sigmay[k] * inv;
+        } else {
+
+//            cout << "process 1 ready to send data to process 0..." << rr - ll << endl;
+            MPI_Send(distlab + ll, rr - ll, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
+//            cout << "process 1 has sent data1 to process 0..." << rr - ll << endl;
+            MPI_Send(klabels + ll, rr - ll, MPI_INT, 0, 1, MPI_COMM_WORLD);
+//            cout << "process 1 has sent data2 to process 0..." << rr - ll << endl;
         }
-#ifdef Timer
 
-        endTime = Clock::now();
-        compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
-        minCost6 += compTime.count() / 1000.0;
-#endif
+
+        if (my_rank == 0) {
+            MPI_Send(kseedsl, numk, MPI_DOUBLE, 1, 1, MPI_COMM_WORLD);
+            MPI_Send(kseedsa, numk, MPI_DOUBLE, 1, 1, MPI_COMM_WORLD);
+            MPI_Send(kseedsb, numk, MPI_DOUBLE, 1, 1, MPI_COMM_WORLD);
+            MPI_Send(kseedsx, numk, MPI_DOUBLE, 1, 1, MPI_COMM_WORLD);
+            MPI_Send(kseedsy, numk, MPI_DOUBLE, 1, 1, MPI_COMM_WORLD);
+            MPI_Send(maxlab, numk, MPI_DOUBLE, 1, 1, MPI_COMM_WORLD);
+
+        } else {
+            MPI_Recv(kseedsl, numk, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Recv(kseedsa, numk, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Recv(kseedsb, numk, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Recv(kseedsx, numk, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Recv(kseedsy, numk, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Recv(maxlab, numk, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        }
+
     }
+
+//    if (my_rank == 0) {
+//        MPI_Send(klabels, sz, MPI_INT, 1, 1, MPI_COMM_WORLD);
+//    } else {
+//        MPI_Recv(klabels, sz, MPI_INT, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+//    }
+
 #ifdef Timer
 
-    cout << "minCost0 : " << minCost0 << endl;
-    cout << "minCost1 : " << minCost1 << endl;
-    cout << "minCost2 : " << minCost2 << endl;
-    cout << "minCost3 : " << minCost3 << endl;
-    cout << "minCost4 : " << minCost4 << endl;
-    cout << "minCost5 : " << minCost5 << endl;
-    cout << "minCost6 : " << minCost6 << endl;
+    printf("===%d 111\n", my_rank);
+
+
+    if (my_rank == 0)cout << "minCost0 : " << minCost0 << endl;
+    if (my_rank == 0)cout << "minCost1 : " << minCost1 << endl;
+    if (my_rank == 0)cout << "minCost2 : " << minCost2 << endl;
+    if (my_rank == 0)cout << "minCost3 : " << minCost3 << endl;
+    if (my_rank == 0)cout << "minCost4 : " << minCost4 << endl;
+    if (my_rank == 0)cout << "minCost5 : " << minCost5 << endl;
+    if (my_rank == 0)cout << "minCost6 : " << minCost6 << endl;
 #endif
 }
 
@@ -648,8 +713,7 @@ void SLIC::EnforceLabelConnectivity(
     double minCost3 = 0;
     double minCost4 = 0;
     auto startTime = Clock::now();
-    int threadNumberSmall = 8;
-    int threadNumberMid = 16;
+
 #endif
     int *tmpLables = new int[sz];
 #pragma omp parallel for num_threads(threadNumber)
@@ -657,7 +721,8 @@ void SLIC::EnforceLabelConnectivity(
 #pragma omp parallel for num_threads(threadNumber)
     for (int i = 0; i < sz; i++) tmpLables[i] = -1;
 //TODO vector P size
-    vector<int> P[numlabels * numlabels];
+//    vector<int> P[numlabels * numlabels];
+    vector<int> P[sz];
 
 #ifdef Timer
     auto endTime = Clock::now();
@@ -672,12 +737,18 @@ void SLIC::EnforceLabelConnectivity(
     minCost4 += compTime.count() / 1000.0;
     startTime = Clock::now();
 #endif
+
+    int mx = 0;
+    for (int i = 0; i < sz; i++)mx = max(mx, labels[i]);
+    cout << "mx " << mx << endl;
+
 #pragma omp parallel for num_threads(threadNumberSmall)
     for (int i = 0; i < sz; i++) {
         int tid = omp_get_thread_num();
 //        int tid = 0;
         G[tid][labels[i]].push_back(i);
     }
+
 #ifdef Timer
     endTime = Clock::now();
     compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
@@ -693,13 +764,13 @@ void SLIC::EnforceLabelConnectivity(
     int mxLable = 0;
 #pragma omp parallel for num_threads(threadNumberMid)
     for (int id = 0; id < numlabels; id++) {
-//        cout << "now solve " << id << endl;
+//        if (my_rank == 0)cout << "now solve " << id << endl;
         int nowLable = id;
 
         int siz = 0;
         for (int tid = 0; tid < threadNumberSmall; tid++)
             siz += G[tid][id].size();
-//        cout << "siz " << siz << endl;
+//        if (my_rank == 0)cout << "siz " << siz << endl;
         int hasOk = 0;
         int *que = new int[siz];
         while (hasOk < siz) {
@@ -715,7 +786,7 @@ void SLIC::EnforceLabelConnectivity(
 
 //            printf("this round seed is %d\n", now);
             if (now == -1) {
-                cout << "GG" << endl;
+                if (my_rank == 0)cout << "GG" << endl;
                 break;
             }
             int head = 0, tail = 0;
@@ -798,6 +869,7 @@ void SLIC::EnforceLabelConnectivity(
             oindex++;
         }
     }
+
     delete[]tmpLables;
     numlabels = label;
 
@@ -805,11 +877,11 @@ void SLIC::EnforceLabelConnectivity(
     endTime = Clock::now();
     compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
     minCost3 += compTime.count() / 1000.0;
-    cout << "minCost0 : " << minCost0 << endl;
-    cout << "minCost1 : " << minCost1 << endl;
-    cout << "minCost2 : " << minCost2 << endl;
-    cout << "minCost3 : " << minCost3 << endl;
-    cout << "minCost4 : " << minCost4 << endl;
+    if (my_rank == 0)cout << "minCost0 : " << minCost0 << endl;
+    if (my_rank == 0)cout << "minCost1 : " << minCost1 << endl;
+    if (my_rank == 0)cout << "minCost2 : " << minCost2 << endl;
+    if (my_rank == 0)cout << "minCost3 : " << minCost3 << endl;
+    if (my_rank == 0)cout << "minCost4 : " << minCost4 << endl;
 #endif
 
 
@@ -862,7 +934,7 @@ void SLIC::PerformSLICO_ForGivenK(
     //--------------------------------------------------
     auto endTime = Clock::now();
     auto compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
-    cout << "p1 cost : " << compTime.count() / 1000 << " ms" << endl;
+    if (my_rank == 0)cout << "p1 cost : " << compTime.count() / 1000 << " ms" << endl;
 
 
     startTime = Clock::now();
@@ -872,7 +944,7 @@ void SLIC::PerformSLICO_ForGivenK(
     if (perturbseeds) DetectLabEdges(m_lvec, m_avec, m_bvec, m_width, m_height, edgemag);
     endTime = Clock::now();
     compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
-    cout << "p1.5 cost : " << compTime.count() / 1000 << " ms" << endl;
+    if (my_rank == 0)cout << "p1.5 cost : " << compTime.count() / 1000 << " ms" << endl;
 
     startTime = Clock::now();
     //找出kseeds，并且移到周围3*3网格中edgemag最小的
@@ -892,7 +964,7 @@ void SLIC::PerformSLICO_ForGivenK(
     }
     endTime = Clock::now();
     compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
-    cout << "p2 cost : " << compTime.count() / 1000 << " ms" << endl;
+    if (my_rank == 0)cout << "p2 cost : " << compTime.count() / 1000 << " ms" << endl;
 
 
     startTime = Clock::now();
@@ -909,17 +981,21 @@ void SLIC::PerformSLICO_ForGivenK(
     compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
     cout << "p3 cost : " << compTime.count() / 1000 << " ms" << endl;
 
-
-    startTime = Clock::now();
-    int *nlabels = new int[sz];
-    EnforceLabelConnectivity(klabels, m_width, m_height, nlabels, numlabels, K);
+    if (my_rank == 0) {
+        startTime = Clock::now();
+        int *nlabels = new int[sz];
+        cout << "numlabels " << numlabels << endl;
+        EnforceLabelConnectivity(klabels, m_width, m_height, nlabels, numlabels, K);
 #pragma omp parallel for num_threads(threadNumber)
-    for (int i = 0; i < sz; i++)
-        klabels[i] = nlabels[i];
-    if (nlabels) delete[] nlabels;
-    endTime = Clock::now();
-    compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
-    cout << "p4 cost : " << compTime.count() / 1000 << " ms" << endl;
+        for (int i = 0; i < sz; i++)
+            klabels[i] = nlabels[i];
+        if (nlabels) delete[] nlabels;
+        endTime = Clock::now();
+        compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
+        if (my_rank == 0)cout << "p4 cost : " << compTime.count() / 1000 << " ms" << endl;
+    }
+
+    cout << my_rank << "done" << endl;
 }
 
 //===========================================================================
@@ -1033,40 +1109,76 @@ int CheckLabelswithPPM(char *filename, int *labels, int width, int height) {
 ///
 //===========================================================================
 int main(int argc, char **argv) {
+
+
+    int proc_len;
+    char processor_name[MPI_MAX_PROCESSOR_NAME];
+    MPI_Init(&argc, &argv);
+    MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+    MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+    MPI_Get_processor_name(processor_name, &proc_len);
+    printf("Process %d of %d ,processor name is %s\n", my_rank, num_procs, processor_name);
     unsigned int *img = NULL;
     int width(0);
     int height(0);
+    char *input_image;
+    char *check_image;
+    int m_spcount;
 
-    LoadPPM((char *) "input_image.ppm", &img, &width, &height);
+    int tag = atoi(argv[1]);
+    if (tag == 1) {
+        input_image = "input_image.ppm";
+        check_image = "check.ppm";
+        m_spcount = 200;
+    } else if (tag == 2) {
+        input_image = "input_image2.ppm";
+        check_image = "check2.ppm";
+        m_spcount = 400;
+    } else {
+        input_image = "input_image3.ppm";
+        check_image = "check3.ppm";
+        m_spcount = 150;
+    }
+    if (my_rank == 0) {
+        printf("m_spcount is %d\n", m_spcount);
+        printf("input image is %s\n", input_image);
+        printf("check image is %s\n", check_image);
+    }
+
+    LoadPPM(input_image, &img, &width, &height);
     if (width == 0 || height == 0) return -1;
 
-    cout << "wi : " << width << "  he : " << height << endl;
     int sz = width * height;
     int *labels = new int[sz];
     int numlabels(0);
     SLIC slic;
-    int m_spcount;
     double m_compactness;
-    m_spcount = 200;
+
     m_compactness = 10.0;
     auto startTime = Clock::now();
     slic.PerformSLICO_ForGivenK(img, width, height, labels, numlabels, m_spcount,
                                 m_compactness);//for a given number K of superpixels
     auto endTime = Clock::now();
     auto compTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
-    cout << "Computing time=" << compTime.count() / 1000 << " ms" << endl;
 
-    int num = CheckLabelswithPPM((char *) "check.ppm", labels, width, height);
-    if (num < 0) {
-        cout << "The result for labels is different from output_labels.ppm." << endl;
-    } else {
-        cout << "There are " << num << " points' labels are different from original file." << endl;
+    cout << my_rank << "Computing time=" << compTime.count() / 1000 << " ms" << endl;
+
+    if (my_rank == 0) {
+        int num = CheckLabelswithPPM(check_image, labels, width, height);
+
+        if (num < 0) {
+            cout << my_rank << "The result for labels is different from output_labels.ppm." << endl;
+        } else {
+            cout << my_rank << "There are " << num << " points' labels are different from original file." << endl;
+        }
+
+        slic.SaveSuperpixelLabels2PPM((char *) "output_labels.ppm", labels, width, height);
+
     }
-
-    slic.SaveSuperpixelLabels2PPM((char *) "output_labels.ppm", labels, width, height);
     if (labels) delete[] labels;
 
     if (img) delete[] img;
+    MPI_Finalize();
 
     return 0;
 }

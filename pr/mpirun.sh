@@ -1,0 +1,1 @@
+srun -N 2 -p amd_256 -n 2 ./SLIC $1

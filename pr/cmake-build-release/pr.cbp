@@ -44,7 +44,6 @@
 				<Option type="1"/>
 				<Option compiler="gcc"/>
 				<Compiler>
-					<Add option="-DTimer"/>
 					<Add option="-DLocal"/>
 					<Add directory="/Users/ylf9811/Desktop/IPCC2021/pr/."/>
 					<Add directory="/usr/local/Cellar/gcc@8/8.4.0_1/lib/gcc/8/gcc/x86_64-apple-darwin19/8.4.0/../../../../../../include/c++/8.4.0"/>
@@ -69,7 +68,6 @@
 				<Option type="1"/>
 				<Option compiler="gcc"/>
 				<Compiler>
-					<Add option="-DTimer"/>
 					<Add option="-DLocal"/>
 					<Add directory="/Users/ylf9811/Desktop/IPCC2021/pr/."/>
 					<Add directory="/usr/local/Cellar/gcc@8/8.4.0_1/lib/gcc/8/gcc/x86_64-apple-darwin19/8.4.0/../../../../../../include/c++/8.4.0"/>

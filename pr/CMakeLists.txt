@@ -3,7 +3,7 @@ project(pr)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_C_FLAGS "-O3 ")
-add_definitions(-DTimer)
+#add_definitions(-DTimer)
 add_definitions(-DLocal)
 
 

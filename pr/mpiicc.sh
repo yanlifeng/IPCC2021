@@ -1,0 +1,1 @@
+mpiicc -std=c++11 -o SLIC SLIC.cpp -O3 -par-affinity=compact -march=core-avx2 -qopenmp -DTimer
